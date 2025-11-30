@@ -2,7 +2,7 @@
 module Interp where
 import Grammar hiding (lookup)
 import Prelude hiding (lookup)
-import Checker
+import Checker hiding (lookup)
 import Lexer
 import Data.Maybe (Maybe)
 
