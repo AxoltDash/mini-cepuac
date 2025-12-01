@@ -39,8 +39,8 @@ import Data.Char
 
 ASA :  var { Id $1 }
      | double { Num $1 }
-     | "#t" { Boolean True }
-     | "#f" { Boolean False }
+     | "#t" { ABool True }
+     | "#f" { ABool False }
      | '(' '+' ASA ASA ')' { Add $3 $4 }
      | '(' '-' ASA ASA ')' { Sub $3 $4 }
      | '(' '*' ASA ASA ')' { Mul $3 $4 }
@@ -52,39 +52,35 @@ ASA :  var { Id $1 }
      | '(' "let" '(' var ':' Type ASA ')' ASA ')' { Let ($4, $6) $7 $9 }
      | '(' ASA ASA ')' { App $2 $3 }
 
-Type: "number" { Number }
-    | "boolean" { Bool }
+Type: "number" { Refinement "v" Number MaybeZero }
+    | "boolean" { Refinement "v" Boolean NonZero }
     | '{' var ':' Type '|' Predicate '}' { Refinement $2 $4 $6 }
     | '(' Type "->" Type ')' { Arrow $2 $4 }
 
-Predicate: var "==" double { PEq $3 }
-         | var "!=" double { PNeq $3 }
-         | var '>' double { PGT $3 }
-         | var ">=" double { PGe $3 }
-         | Predicate "&&" Predicate { PAnd $1 $3 }
+Predicate: var "==" double { if $3 == 0 then Zero $3 else parseError [] }
+         | var "!=" double { if $3 == 0 then NonZero $3 else parseError [] }
+         | var '>' double { if $3 == 0 then NonZero $3 else parseError [] }
+         | var ">=" double { if $3 == 0 then MaybeZero $3 else parseError [] }
 {
 
 parseError :: [Token] -> a
 parseError _ = error "Parse error"
 
-data Type 
-  = Bool 
+data Type
+  = Boolean
   | Number
-  | Arrow Type Type
-  | Refinement String Type Predicate
-  deriving(Show, Eq)
 
-data Predicate
-  = PNeq Double      
-  | PEq Double      
-  | PGT Double        
-  | PGe Double       
-  | PAnd Predicate Predicate
-  deriving (Eq, Show)
+data RefinementType =  Refinement String Type Predicate
+
+data Predicate 
+  = NonZero
+  | Zero 
+  | MaybeZero
+  deriving (Show, Eq)
 
 data ASA
-  = Num Double
-  | Boolean Bool
+  = ANum Double
+  | ABool Bool
   | Id String
   | Add ASA ASA
   | Sub ASA ASA
@@ -93,9 +89,9 @@ data ASA
   | And ASA ASA
   | Or ASA ASA
   | Not ASA
-  | Lambda Type String ASA
+  | Lambda RefinementType String ASA
   | App ASA ASA
-  | Let (String, Type) ASA ASA
+  | Let (String, RefinementType) ASA ASA
   deriving (Show, Eq)
 
 main = getContents >>= print . parse . lexer
