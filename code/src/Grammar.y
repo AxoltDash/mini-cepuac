@@ -55,6 +55,7 @@ ASA :  var { Id $1 }
 Type: "number" { Number }
     | "boolean" { Bool }
     | '{' var ':' Type '|' Predicate '}' { Refinement $2 $4 $6 }
+    | '(' Type "->" Type ')' { Arrow $2 $4 }
 
 Predicate: var "==" double { PEq $3 }
          | var "!=" double { PNeq $3 }
