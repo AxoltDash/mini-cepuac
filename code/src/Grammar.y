@@ -50,7 +50,7 @@ ASA :  var { Id $1 }
      | '(' "not" ASA ')' { Not $3 }
      | '(' "lambda" ':' Type "->" Type '(' var ')' ASA ')' { Lambda (Arrow $4 $6) $8 $10 }
      | '(' "let" '(' var ':' Type ASA ')' ASA ')' { Let ($4, $6) $7 $9 }
-     | '(' ASA ASA ')' { App $2 $3}
+     | '(' ASA ASA ')' { App $2 $3 }
 
 Type: "number" { Number }
     | "boolean" { Bool }

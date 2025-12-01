@@ -51,8 +51,29 @@ tc (g, (App f a)) =
 tc (g, (Let (i, t) a c))
   | t == tc (g, a) = tc ((i, t):g, c)
   | otherwise = error $ "Incompatible types in variable " ++ "\"" ++ i ++"\"" ++ ": expected " ++ show t ++ ", got " ++ show (tc (g, a))
+
+eval :: Predicate -> Double -> Bool
+eval (PNeq n) v = v /= n
+eval (PEq n) v = v == n
+eval (PGT n) v = v > n
+eval (PGe n) v = v >= n
+eval (PAnd p1 p2) v = eval p1 v && eval p2 v
+
 lookup :: Gamma -> String -> Type
 lookup [] s = error "Free variable"
 lookup ((id, t):xs) s 
   | id == s = t 
   | otherwise = lookup xs s
+
+checkRefinement :: Gamma -> ASA -> Type -> Either String ()
+checkRefinement _ (Num n) Number = Right ()
+checkRefinement _ (Num n) (Refinement _ Number pred) =
+  if satisfies n pred
+    then Right ()
+    else Left $ "Invalid : value " ++ show n ++ " doesn't meet the requirements " ++ show pred
+checkRefinement g (Id s) t =
+  case lookup g s of
+    Refinement _ Number pred ->
+      Left $ "Cannot prove refinement " ++ show pred ++ " for variable " ++ s
+    _ -> Right ()
+checkRefinement _ _ _ = Left "Cannot prove refinement"
