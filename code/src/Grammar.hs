@@ -101,7 +101,7 @@ happyReduction_1 _  = notHappyAtAll
 happyReduce_2 = happySpecReduce_1  0# happyReduction_2
 happyReduction_2 (HappyTerminal (TokenNum happy_var_1))
          =  HappyAbsSyn5
-                 (Num happy_var_1
+                 (ANum happy_var_1
         )
 happyReduction_2 _  = notHappyAtAll 
 
@@ -239,13 +239,13 @@ happyReduction_14 (_ `HappyStk`
 happyReduce_15 = happySpecReduce_1  1# happyReduction_15
 happyReduction_15 _
          =  HappyAbsSyn6
-                 (Refinement "v" Number MaybeZero
+                 (Refinement Number MaybeZero
         )
 
 happyReduce_16 = happySpecReduce_1  1# happyReduction_16
 happyReduction_16 _
          =  HappyAbsSyn6
-                 (Refinement "v" Boolean NonZero
+                 (Refinement Boolean NonZero
         )
 
 happyReduce_17 = happyReduce 7# 1# happyReduction_17
@@ -254,11 +254,11 @@ happyReduction_17 (_ `HappyStk`
         _ `HappyStk`
         (HappyAbsSyn6  happy_var_4) `HappyStk`
         _ `HappyStk`
-        (HappyTerminal (TokenId happy_var_2)) `HappyStk`
+        _ `HappyStk`
         _ `HappyStk`
         happyRest)
          = HappyAbsSyn6
-                 (Refinement happy_var_2 happy_var_4 happy_var_6
+                 (Refinement happy_var_4 happy_var_6
         ) `HappyStk` happyRest
 
 happyReduce_18 = happyReduce 5# 1# happyReduction_18
@@ -277,7 +277,7 @@ happyReduction_19 (HappyTerminal (TokenNum happy_var_3))
         _
         _
          =  HappyAbsSyn7
-                 (if happy_var_3 == 0 then Zero happy_var_3 else parseError []
+                 (if happy_var_3 == 0 then Zero else parseError []
         )
 happyReduction_19 _ _ _  = notHappyAtAll 
 
@@ -286,7 +286,7 @@ happyReduction_20 (HappyTerminal (TokenNum happy_var_3))
         _
         _
          =  HappyAbsSyn7
-                 (if happy_var_3 == 0 then NonZero happy_var_3 else parseError []
+                 (if happy_var_3 == 0 then NonZero else parseError []
         )
 happyReduction_20 _ _ _  = notHappyAtAll 
 
@@ -295,7 +295,7 @@ happyReduction_21 (HappyTerminal (TokenNum happy_var_3))
         _
         _
          =  HappyAbsSyn7
-                 (if happy_var_3 == 0 then NonZero happy_var_3 else parseError []
+                 (if happy_var_3 == 0 then NonZero else parseError []
         )
 happyReduction_21 _ _ _  = notHappyAtAll 
 
@@ -304,7 +304,7 @@ happyReduction_22 (HappyTerminal (TokenNum happy_var_3))
         _
         _
          =  HappyAbsSyn7
-                 (if happy_var_3 == 0 then MaybeZero happy_var_3 else parseError []
+                 (if happy_var_3 == 0 then MaybeZero else parseError []
         )
 happyReduction_22 _ _ _  = notHappyAtAll 
 
@@ -389,8 +389,9 @@ parseError _ = error "Parse error"
 data Type
   = Boolean
   | Number
-
-data RefinementType =  Refinement String Type Predicate
+  | Arrow Type Type
+  | Refinement Type Predicate
+  deriving (Show, Eq)
 
 data Predicate 
   = NonZero
@@ -409,9 +410,9 @@ data ASA
   | And ASA ASA
   | Or ASA ASA
   | Not ASA
-  | Lambda RefinementType String ASA
+  | Lambda Type String ASA
   | App ASA ASA
-  | Let (String, RefinementType) ASA ASA
+  | Let (String, Type) ASA ASA
   deriving (Show, Eq)
 
 main = getContents >>= print . parse . lexer
