@@ -25,8 +25,8 @@ eval :: String -> IO ()
 eval input = catch 
   (do
     let ast = parse $ lexer input
-    _ <- evaluate $ tc ([], ast)  -- Verificación de tipos (forzada)
-    putStrLn (show $ interp ast))
+    t <- evaluate $ tc ([], ast)  -- Verificación de tipos (forzada)
+    putStrLn (show $ interp ast t))
   (\(ErrorCall msg) -> putStrLn $ "Error: " ++ msg)
 
 load :: String -> IO ()
@@ -34,8 +34,8 @@ load filepath = catch
   (do
     src <- readFile filepath
     let ast = parse $ lexer src
-    _ <- evaluate $ tc ([], ast)  -- Verificación de tipos (forzada)
-    putStrLn (show $ interp ast))
+    t <- evaluate $ tc ([], ast)  -- Verificación de tipos (forzada)
+    putStrLn (show $ interp ast t))
   (\(ErrorCall msg) -> putStrLn $ "Error: " ++ msg)
 
 
