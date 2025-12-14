@@ -126,8 +126,8 @@ Comandos disponibles:
 > (+ 3 5)
  8.0
 
-> (* 2 3 4)
- 24.0
+> (* 2 3)
+ 6.0
 
 > ((lambda : boolean -> boolean (b) b) #t)
 #t
@@ -141,18 +141,18 @@ Bye.
 ### Operadores Aritméticos
 
 ```lisp
-(+ 1 2 3 4)           ; Suma: 10
-(- 10 3)              ; Resta: 7
-(* 2 3 4)             ; Multiplicación: 24
-(/ 20 4)              ; División: 5
+(+ 1 2)           ; Suma: 3
+(- 10 3)          ; Resta: 7
+(* 2 3)           ; Multiplicación: 6
+(/ 20 4)          ; División: 5
 ```
 
-### Operadores Lógicos y de Comparación
+### Operadores Lógicos
 
 ```lisp
-(&& #t #t #f)         ; AND: #f
-(|| #f #f #t)         ; OR: #t
-(not #t)              ; NOT: #f
+(&& #t #t)         ; AND: #t
+(|| #f #f)         ; OR: #f
+(not #t)           ; NOT: #f
 ```
 
 ### Funciones Lambda
