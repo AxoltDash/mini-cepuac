@@ -1,0 +1,5 @@
+; El residuo de un entero no negativo entre 5 esta en [0, 4].
+(let (resto : { v : int | v >= 0 } -> { v : int | v >= 0 && v <= 4 }
+      (lambda : { v : int | v >= 0 } -> { v : int | v >= 0 && v <= 4 } (n)
+        (% n 5)))
+  (resto 23))

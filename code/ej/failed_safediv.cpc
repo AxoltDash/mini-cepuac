@@ -1,6 +1,7 @@
-(let (safeDiv : (number -> ({ y : number | y != 0 } -> number))
-      (lambda : number -> ({ y : number | y != 0 } -> number) (x)
-        (lambda : { y : number | y != 0 } -> number (y)
+; Error de tipos: 0 no satisface el refinamiento { y : int | y != 0 }.
+(let (safeDiv : int -> ({ y : int | y != 0 } -> int)
+      (lambda : int -> ({ y : int | y != 0 } -> int) (x)
+        (lambda : { y : int | y != 0 } -> int (y)
           (/ x y)
         )
       )

@@ -1,0 +1,233 @@
+; =====================================================================
+;  Link-cut tree (Sleator y Tarjan) escrito en Mini-Cepuac.
+;
+;  Representa un bosque dinamico: link une dos arboles, cut separa una
+;  arista, y se puede consultar la raiz, la conectividad y la suma de los
+;  valores sobre el camino entre dos nodos, todo en O(log n) amortizado.
+;
+;  Implementacion estandar con splay trees: cada camino preferido es un
+;  splay tree ordenado por profundidad; `fa` es el padre dentro del splay
+;  o, si el nodo es raiz de su splay, el "path-parent". `rev` es la marca
+;  perezosa de inversion que permite cambiar la raiz (make-root).
+;
+;  Los nodos viven en una arena de listas paralelas de longitud fija (64);
+;  el nodo 0 es el nulo (sin hijos, agg = 0). Los indices tienen tipo `idx`,
+;  asi que todos los accesos nth/set estan verificados estaticamente.
+;
+;  Convencion: las funciones que "devuelven" un nodo lo dejan en `ret`.
+; =====================================================================
+
+; ---------- tipos ----------------------------------------------------
+
+(type idx   { v : int | v >= 0 && v < 64 })
+(type ints  { v : list int | len v == 64 })
+(type idxs  { v : list idx | len v == 64 })
+(type flags { v : list boolean | len v == 64 })
+
+(type lct (record (l idxs) (r idxs) (fa idxs) (rev flags) (val ints) (agg ints) (ret idx)))
+
+; ---------- acceso a los campos de un nodo ---------------------------
+
+(define (l-of t i)   : lct -> idx -> idx     (nth (get t l) i))
+(define (r-of t i)   : lct -> idx -> idx     (nth (get t r) i))
+(define (fa-of t i)  : lct -> idx -> idx     (nth (get t fa) i))
+(define (rev? t i)   : lct -> idx -> boolean (nth (get t rev) i))
+(define (val-of t i) : lct -> idx -> int     (nth (get t val) i))
+(define (agg-of t i) : lct -> idx -> int     (nth (get t agg) i))
+
+; Los setters ignoran el nodo 0 para que el nulo nunca cambie.
+(define (set-l t i j)   : lct -> idx -> idx -> lct     (if (== i 0) t (with t l   (set (get t l) i j))))
+(define (set-r t i j)   : lct -> idx -> idx -> lct     (if (== i 0) t (with t r   (set (get t r) i j))))
+(define (set-fa t i j)  : lct -> idx -> idx -> lct     (if (== i 0) t (with t fa  (set (get t fa) i j))))
+(define (set-rev t i b) : lct -> idx -> boolean -> lct (if (== i 0) t (with t rev (set (get t rev) i b))))
+(define (set-val t i v) : lct -> idx -> int -> lct     (if (== i 0) t (with t val (set (get t val) i v))))
+(define (set-agg t i v) : lct -> idx -> int -> lct     (if (== i 0) t (with t agg (set (get t agg) i v))))
+
+; hijo k de x: #f = izquierdo, #t = derecho
+(define (child t x k) : lct -> idx -> boolean -> idx
+  (if k (r-of t x) (l-of t x)))
+
+(define (set-child t x k y) : lct -> idx -> boolean -> idx -> lct
+  (if k (set-r t x y) (set-l t x y)))
+
+; ---------- construccion ---------------------------------------------
+
+; Bosque de 63 nodos aislados, todos con valor 0.
+(define lct-new : lct
+  (record (l (replicate 64 0)) (r (replicate 64 0)) (fa (replicate 64 0))
+          (rev (replicate 64 #f)) (val (replicate 64 0)) (agg (replicate 64 0)) (ret 0)))
+
+; ---------- primitivas del splay -------------------------------------
+
+; x es raiz de su splay si su padre no lo tiene como hijo.
+(define (root? t x) : lct -> idx -> boolean
+  (let ((p (fa-of t x)))
+    (&& (!= (l-of t p) x) (!= (r-of t p) x))))
+
+; Recalcula el agregado (suma del camino) de x.
+(define (pushup t x) : lct -> idx -> lct
+  (set-agg t x (+ (+ (agg-of t (l-of t x)) (agg-of t (r-of t x))) (val-of t x))))
+
+(define (flip-rev t x) : lct -> idx -> lct
+  (set-rev t x (not (rev? t x))))
+
+; Aplica la inversion pendiente de x: intercambia hijos y la propaga.
+(define (pushdown t x) : lct -> idx -> lct
+  (if (rev? t x)
+      (let ((lx (l-of t x))
+            (rx (r-of t x))
+            (t (set-l t x rx))
+            (t (set-r t x lx))
+            (t (flip-rev t lx))
+            (t (flip-rev t rx)))
+        (set-rev t x #f))
+      t))
+
+; Rotacion simple de x sobre su padre.
+(define (rotate t x) : lct -> idx -> lct
+  (let ((y (fa-of t x))
+        (z (fa-of t y))
+        (k (== (r-of t y) x))              ; x es hijo derecho de y?
+        (w (child t x (not k)))            ; subarbol que cambia de lado
+        (t (if (root? t y) t (set-child t z (== (r-of t z) y) x)))
+        (t (set-fa t x z))
+        (t (set-child t y k w))
+        (t (set-fa t w y))
+        (t (set-child t x (not k) y))
+        (t (set-fa t y x))
+        (t (pushup t y)))
+    (pushup t x)))
+
+; Aplica los pushdown pendientes desde la raiz del splay hasta x.
+(define (push-path t x) : lct -> idx -> lct
+  (let ((t (if (root? t x) t (push-path t (fa-of t x)))))
+    (pushdown t x)))
+
+(define (splay-loop t x) : lct -> idx -> lct
+  (if (root? t x)
+      t
+      (let ((y (fa-of t x))
+            (z (fa-of t y))
+            (t (if (root? t y)
+                   t
+                   ; zig-zig si x e y estan del mismo lado, zig-zag si no
+                   (if (== (== (l-of t y) x) (== (l-of t z) y))
+                       (rotate t y)
+                       (rotate t x))))
+            (t (rotate t x)))
+        (splay-loop t x))))
+
+; Lleva x a la raiz de su splay tree.
+(define (splay t x) : lct -> idx -> lct
+  (splay-loop (push-path t x) x))
+
+; ---------- operaciones del link-cut tree ----------------------------
+
+; access: hace preferido el camino de la raiz del arbol a x.
+(define (access-loop t x y) : lct -> idx -> idx -> lct
+  (if (== x 0)
+      t
+      (let ((t (splay t x))
+            (t (set-r t x y))
+            (t (pushup t x)))
+        (access-loop t (fa-of t x) x))))
+
+(define (access t x) : lct -> idx -> lct (access-loop t x 0))
+
+; Convierte a x en la raiz de su arbol (invierte el camino raiz..x).
+(define (make-root t x) : lct -> idx -> lct
+  (let ((t (access t x))
+        (t (splay t x)))
+    (flip-rev t x)))
+
+; Nodo mas a la izquierda del splay de x (el menos profundo); ret.
+(define (leftmost t x) : lct -> idx -> lct
+  (let ((t (pushdown t x))
+        (lx (l-of t x)))
+    (if (== lx 0) (with t ret x) (leftmost t lx))))
+
+; Raiz del arbol que contiene a x; queda en ret.
+(define (find-root t x) : lct -> idx -> lct
+  (let ((t (access t x))
+        (t (splay t x))
+        (t (leftmost t x))
+        (rt (get t ret))
+        (t (splay t rt)))
+    (with t ret rt)))
+
+; Une los arboles de x y y con la arista (x, y). Deben ser distintos.
+(define (lct-link t x y) : lct -> idx -> idx -> lct
+  (let ((t (make-root t x)))
+    (set-fa t x y)))
+
+; Quita la arista (x, y) si existe.
+(define (lct-cut t x y) : lct -> idx -> idx -> lct
+  (let ((t (make-root t x))
+        (t (access t y))
+        (t (splay t y)))
+    (if (&& (== (l-of t y) x) (== (r-of t x) 0))
+        (let ((t (set-l t y 0))
+              (t (set-fa t x 0)))
+          (pushup t y))
+        t)))
+
+; Como el arbol no se modifica (solo se reorganizan los splays), las
+; consultas pueden descartar la estructura resultante.
+(define (lct-connected? t x y) : lct -> idx -> idx -> boolean
+  (let ((t (find-root t x))
+        (rx (get t ret))
+        (t (find-root t y))
+        (ry (get t ret)))
+    (== rx ry)))
+
+; Suma de los valores sobre el camino x..y (-1 si no estan conectados).
+(define (lct-path-sum t x y) : lct -> idx -> idx -> int
+  (if (lct-connected? t x y)
+      (let ((t (make-root t x))
+            (t (access t y))
+            (t (splay t y)))
+        (agg-of t y))
+      -1))
+
+; Cambia el valor del nodo x.
+(define (lct-set t x v) : lct -> idx -> int -> lct
+  (let ((t (access t x))
+        (t (splay t x))
+        (t (set-val t x v)))
+    (pushup t x)))
+
+; ---------- prueba ----------------------------------------------------
+
+; Da valor 10*i a los nodos 1..n.
+(define (init-vals t i) : lct -> idx -> lct
+  (if (== i 0) t (init-vals (lct-set t i (* 10 i)) (- i 1))))
+
+(define (b2i b) : boolean -> int (if b 1 0))
+
+;   1-2-3-4      7-8-9
+;     |
+;     5-6
+(let ((t (init-vals lct-new 10))
+      (t (lct-link t 1 2))
+      (t (lct-link t 2 3))
+      (t (lct-link t 3 4))
+      (t (lct-link t 2 5))
+      (t (lct-link t 5 6))
+      (t (lct-link t 7 8))
+      (t (lct-link t 8 9))
+      (q1 (lct-path-sum t 4 6))             ; 4-3-2-5-6 = 200
+      (q2 (b2i (lct-connected? t 1 9)))     ; 0
+      (t (lct-link t 6 7))                  ; une los dos arboles
+      (q3 (lct-path-sum t 1 9))             ; 1-2-5-6-7-8-9 = 380
+      (t (lct-cut t 2 5))                   ; separa
+      (q4 (b2i (lct-connected? t 1 6)))     ; 0
+      (q5 (lct-path-sum t 4 1))             ; 4-3-2-1 = 100
+      (t (lct-set t 3 1000))
+      (q6 (lct-path-sum t 4 1))             ; 40+1000+20+10 = 1070
+      (t (lct-link t 5 4))
+      (q7 (lct-path-sum t 9 3))             ; 9-8-7-6-5-4-3 = 1390
+      (q8 (lct-path-sum t 2 10))            ; 10 esta aislado: -1
+      (t (lct-cut t 3 4))
+      (q9 (b2i (lct-connected? t 1 9)))     ; 0
+      (q10 (lct-path-sum t 4 9)))           ; 4-5-6-7-8-9 = 390
+  (list q1 q2 q3 q4 q5 q6 q7 q8 q9 q10))

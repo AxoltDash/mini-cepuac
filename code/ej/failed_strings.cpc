@@ -1,0 +1,6 @@
+; Error de tipos: "" no satisface { s : string | len s > 0 }.
+(let (porCaracter : int -> ({ s : string | len s > 0 } -> int)
+      (lambda : int -> ({ s : string | len s > 0 } -> int) (total)
+        (lambda : { s : string | len s > 0 } -> int (s)
+          (/ total (len s)))))
+  ((porCaracter 100) ""))

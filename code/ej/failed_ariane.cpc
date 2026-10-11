@@ -1,0 +1,7 @@
+; Error de tipos: la velocidad horizontal puede exceder el rango de 16 bits,
+; asi que la conversion se rechaza en tiempo de verificacion.
+(let (aInt16 : { v : double | v >= -32768.0 && v <= 32767.0 } -> { v : int | v >= -32768 && v <= 32767 }
+      (lambda : { v : double | v >= -32768.0 && v <= 32767.0 } -> { v : int | v >= -32768 && v <= 32767 } (h)
+        (toInt h)))
+  (let (velocidad : { v : double | v >= 0.0 } 40000.0)
+    (aInt16 velocidad)))

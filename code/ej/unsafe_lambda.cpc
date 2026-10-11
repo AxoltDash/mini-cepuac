@@ -1,0 +1,3 @@
+; Error de tipos: el cuerpo de una lambda se verifica al definirla.
+; Un parametro de tipo int admite el 0, asi que (/ 10 y) no es seguro.
+(lambda : int -> int (y) (/ 10 y))

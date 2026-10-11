@@ -1,8 +1,8 @@
-; Division segura, falla antes de interpretar si no se tiene una prueba 
-; que el denominador no es cero.
-(let (safeDiv : (number -> ({ y : number | y != 0 } -> number))
-      (lambda : number -> ({ y : number | y != 0 } -> number) (x)
-        (lambda : { y : number | y != 0 } -> number (y)
+; Division segura: falla antes de interpretar si no se tiene una prueba
+; de que el denominador no es cero.
+(let (safeDiv : int -> ({ y : int | y != 0 } -> int)
+      (lambda : int -> ({ y : int | y != 0 } -> int) (x)
+        (lambda : { y : int | y != 0 } -> int (y)
           (/ x y)
         )
       )

@@ -1,0 +1,7 @@
+; Strings: los refinamientos hablan de la longitud (len v).
+; El promedio por caracter solo se puede calcular si la cadena no es vacia.
+(let (porCaracter : int -> ({ s : string | len s > 0 } -> int)
+      (lambda : int -> ({ s : string | len s > 0 } -> int) (total)
+        (lambda : { s : string | len s > 0 } -> int (s)
+          (/ total (len s)))))
+  ((porCaracter 100) (++ "hola" " mundo")))

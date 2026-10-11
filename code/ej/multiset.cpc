@@ -1,0 +1,315 @@
+; =====================================================================
+;  Multiset estilo std::multiset de C++ sobre un arbol rojo-negro
+;  (variante left-leaning de Sedgewick) escrito en Mini-Cepuac.
+;
+;  Mini-Cepuac no tiene punteros ni mutacion, asi que los nodos viven en
+;  una "arena": listas paralelas de longitud fija (64) indexadas por el
+;  numero de nodo. El nodo 0 es el centinela NIL (negro, sin hijos).
+;
+;  Lo que aporta el sistema de tipos refinados:
+;    * `idx` garantiza que todo indice almacenado como hijo esta en rango,
+;      asi `nth` y `set` nunca fallan en tiempo de ejecucion.
+;    * `cnt` es una lista de naturales, por lo que `replicate` en el
+;      recorrido in-order es seguro, y el decremento de erase se verifica
+;      con `if`.
+;    * `next` (siguiente nodo libre) esta acotado para que la asignacion de
+;      nodos sea segura; si la arena se llena, la insercion se ignora.
+;
+;  Convencion: las funciones que necesitan "devolver" un nodo ademas del
+;  arbol lo dejan en el campo `ret` (como un registro de retorno).
+; =====================================================================
+
+; ---------- tipos ----------------------------------------------------
+
+(type idx   { v : int | v >= 0 && v < 64 })
+(type nat   { v : int | v >= 0 })
+(type ints  { v : list int | len v == 64 })
+(type nats  { v : list nat | len v == 64 })
+(type idxs  { v : list idx | len v == 64 })
+(type flags { v : list boolean | len v == 64 })
+
+(type tree (record (key ints) (cnt nats) (left idxs) (right idxs) (red flags)
+                   (root idx) (next { v : int | v >= 1 && v <= 64 })
+                   (size nat) (ret idx)))
+
+; resultado de lower-bound: si se encontro y que llave
+(type found (record (ok boolean) (key int)))
+
+; ---------- acceso a los campos de un nodo ---------------------------
+
+(define (key-of t i)   : tree -> idx -> int     (nth (get t key) i))
+(define (cnt-of t i)   : tree -> idx -> nat     (nth (get t cnt) i))
+(define (left-of t i)  : tree -> idx -> idx     (nth (get t left) i))
+(define (right-of t i) : tree -> idx -> idx     (nth (get t right) i))
+(define (red? t i)     : tree -> idx -> boolean (nth (get t red) i))
+
+(define (set-key t i k)   : tree -> idx -> int -> tree     (with t key   (set (get t key) i k)))
+(define (set-cnt t i c)   : tree -> idx -> nat -> tree     (with t cnt   (set (get t cnt) i c)))
+(define (set-left t i j)  : tree -> idx -> idx -> tree     (with t left  (set (get t left) i j)))
+(define (set-right t i j) : tree -> idx -> idx -> tree     (with t right (set (get t right) i j)))
+(define (set-red t i b)   : tree -> idx -> boolean -> tree (with t red   (set (get t red) i b)))
+
+; Resta saturada en los naturales: el tipo garantiza que size nunca es
+; negativo aunque el dominio no relacione size con count.
+(define (sub-nat a b) : nat -> nat -> nat
+  (let ((d (- a b))) (if (< d 0) 0 d)))
+
+; ---------- construccion -----------------------------------------------
+
+(define ms-new : tree
+  (record (key (replicate 64 0)) (cnt (replicate 64 0))
+          (left (replicate 64 0)) (right (replicate 64 0)) (red (replicate 64 #f))
+          (root 0) (next 1) (size 0) (ret 0)))
+
+; Reserva un nodo rojo con la llave k y lo deja en `ret`.
+; Si la arena esta llena, ret = 0 y el arbol no cambia.
+(define (new-node t k) : tree -> int -> tree
+  (let ((n (get t next)))
+    (if (< n 64)
+        (let ((t (set-key t n k))
+              (t (set-cnt t n 1))
+              (t (set-red t n #t))
+              (t (with t next (+ n 1)))
+              (t (with t size (+ (get t size) 1))))
+          (with t ret n))
+        (with t ret 0))))
+
+; ---------- rotaciones y cambio de color ------------------------------
+
+; Rota a la izquierda sobre h (h.right es rojo) y deja la nueva raiz en ret.
+(define (rotate-left t h) : tree -> idx -> tree
+  (let ((x (right-of t h))
+        (t (set-right t h (left-of t x)))
+        (t (set-left t x h))
+        (t (set-red t x (red? t h)))
+        (t (set-red t h #t)))
+    (with t ret x)))
+
+; Rota a la derecha sobre h (h.left es rojo) y deja la nueva raiz en ret.
+(define (rotate-right t h) : tree -> idx -> tree
+  (let ((x (left-of t h))
+        (t (set-left t h (right-of t x)))
+        (t (set-right t x h))
+        (t (set-red t x (red? t h)))
+        (t (set-red t h #t)))
+    (with t ret x)))
+
+; Invierte el color de h y de sus dos hijos.
+(define (flip-colors t h) : tree -> idx -> tree
+  (let ((l (left-of t h))
+        (r (right-of t h))
+        (t (set-red t h (not (red? t h))))
+        (t (set-red t l (not (red? t l)))))
+    (set-red t r (not (red? t r)))))
+
+; Restaura los invariantes left-leaning en h despues de una modificacion.
+(define (balance t h) : tree -> idx -> tree
+  (let ((t (if (&& (red? t (right-of t h)) (not (red? t (left-of t h))))
+               (rotate-left t h)
+               (with t ret h)))
+        (h (get t ret))
+        (t (if (&& (red? t (left-of t h)) (red? t (left-of t (left-of t h))))
+               (rotate-right t h)
+               (with t ret h)))
+        (h (get t ret))
+        (t (if (&& (red? t (left-of t h)) (red? t (right-of t h)))
+               (flip-colors t h)
+               t)))
+    (with t ret h)))
+
+; ---------- insercion --------------------------------------------------
+
+; Inserta k en el subarbol h; la nueva raiz del subarbol queda en ret.
+(define (ins t h k) : tree -> idx -> int -> tree
+  (if (== h 0)
+      (new-node t k)
+      (let ((hk (key-of t h)))
+        (if (< k hk)
+            (let ((t (ins t (left-of t h) k))
+                  (t (set-left t h (get t ret))))
+              (balance t h))
+            (if (> k hk)
+                (let ((t (ins t (right-of t h) k))
+                      (t (set-right t h (get t ret))))
+                  (balance t h))
+                ; llave repetida: solo sube el contador
+                (let ((t (set-cnt t h (+ (cnt-of t h) 1)))
+                      (t (with t size (+ (get t size) 1))))
+                  (with t ret h)))))))
+
+(define (ms-insert t k) : tree -> int -> tree
+  (let ((t (ins t (get t root) k))
+        (r (get t ret))
+        (t (with t root r)))
+    (set-red t r #f)))
+
+; ---------- consultas -------------------------------------------------
+
+(define (count-in t h k) : tree -> idx -> int -> nat
+  (if (== h 0)
+      0
+      (let ((hk (key-of t h)))
+        (if (< k hk)
+            (count-in t (left-of t h) k)
+            (if (> k hk)
+                (count-in t (right-of t h) k)
+                (cnt-of t h))))))
+
+(define (ms-count t k) : tree -> int -> nat (count-in t (get t root) k))
+
+(define (ms-contains t k) : tree -> int -> boolean (> (ms-count t k) 0))
+
+(define (ms-size t) : tree -> nat (get t size))
+
+; Menor llave >= k (como std::multiset::lower_bound).
+(define (lb t h k best) : tree -> idx -> int -> found -> found
+  (if (== h 0)
+      best
+      (if (< (key-of t h) k)
+          (lb t (right-of t h) k best)
+          (lb t (left-of t h) k (record (ok #t) (key (key-of t h)))))))
+
+(define (ms-lower-bound t k) : tree -> int -> found
+  (lb t (get t root) k (record (ok #f) (key 0))))
+
+; Recorrido in-order con repeticiones: la lista ordenada del multiset.
+(define (inorder t h acc) : tree -> idx -> list int -> list int
+  (if (== h 0)
+      acc
+      (inorder t (left-of t h)
+               (++ (replicate (cnt-of t h) (key-of t h))
+                   (inorder t (right-of t h) acc)))))
+
+(define (ms-to-list t) : tree -> list int (inorder t (get t root) (list)))
+
+; ---------- borrado (Sedgewick, LLRB) ---------------------------------
+
+(define (move-red-left t h) : tree -> idx -> tree
+  (let ((t (flip-colors t h)))
+    (if (red? t (left-of t (right-of t h)))
+        (let ((t (rotate-right t (right-of t h)))
+              (t (set-right t h (get t ret)))
+              (t (rotate-left t h))
+              (h (get t ret)))
+          (with (flip-colors t h) ret h))
+        (with t ret h))))
+
+(define (move-red-right t h) : tree -> idx -> tree
+  (let ((t (flip-colors t h)))
+    (if (red? t (left-of t (left-of t h)))
+        (let ((t (rotate-right t h))
+              (h (get t ret)))
+          (with (flip-colors t h) ret h))
+        (with t ret h))))
+
+; Indice del nodo con la menor llave del subarbol h (h != 0).
+(define (min-node t h) : tree -> idx -> idx
+  (if (== (left-of t h) 0) h (min-node t (left-of t h))))
+
+; Elimina el nodo minimo del subarbol h; la nueva raiz queda en ret.
+(define (delete-min t h) : tree -> idx -> tree
+  (if (== (left-of t h) 0)
+      (with t ret 0)
+      (let ((t (if (&& (not (red? t (left-of t h)))
+                       (not (red? t (left-of t (left-of t h)))))
+                   (move-red-left t h)
+                   (with t ret h)))
+            (h (get t ret))
+            (t (delete-min t (left-of t h)))
+            (t (set-left t h (get t ret))))
+        (balance t h))))
+
+; Elimina el nodo con llave k (que debe existir) del subarbol h.
+(define (del t h k) : tree -> idx -> int -> tree
+  (if (< k (key-of t h))
+      (let ((t (if (&& (not (red? t (left-of t h)))
+                       (not (red? t (left-of t (left-of t h)))))
+                   (move-red-left t h)
+                   (with t ret h)))
+            (h (get t ret))
+            (t (del t (left-of t h) k))
+            (t (set-left t h (get t ret))))
+        (balance t h))
+      (let ((t (if (red? t (left-of t h)) (rotate-right t h) (with t ret h)))
+            (h (get t ret)))
+        (if (&& (== k (key-of t h)) (== (right-of t h) 0))
+            (with t ret 0)
+            (let ((t (if (&& (not (red? t (right-of t h)))
+                             (not (red? t (left-of t (right-of t h)))))
+                         (move-red-right t h)
+                         (with t ret h)))
+                  (h (get t ret)))
+              (if (== k (key-of t h))
+                  ; reemplaza h por el minimo de su subarbol derecho
+                  (let ((m (min-node t (right-of t h)))
+                        (t (set-key t h (key-of t m)))
+                        (t (set-cnt t h (cnt-of t m)))
+                        (t (delete-min t (right-of t h)))
+                        (t (set-right t h (get t ret))))
+                    (balance t h))
+                  (let ((t (del t (right-of t h) k))
+                        (t (set-right t h (get t ret))))
+                    (balance t h))))))))
+
+; Elimina el nodo de la llave k por completo (k debe existir).
+(define (delete-node t k) : tree -> int -> tree
+  (let ((r (get t root))
+        (t (if (&& (not (red? t (left-of t r))) (not (red? t (right-of t r))))
+               (set-red t r #t)
+               t))
+        (t (del t r k))
+        (r (get t ret))
+        (t (with t root r)))
+    (if (== r 0) t (set-red t r #f))))
+
+; Baja en 1 el contador del nodo con llave k (existe y es > 1).
+(define (dec-count t h k) : tree -> idx -> int -> tree
+  (if (== h 0)
+      t
+      (let ((hk (key-of t h)))
+        (if (< k hk)
+            (dec-count t (left-of t h) k)
+            (if (> k hk)
+                (dec-count t (right-of t h) k)
+                (let ((c (cnt-of t h)))
+                  (if (> c 0) (set-cnt t h (- c 1)) t)))))))
+
+; Borra UNA ocurrencia de k, como ms.erase(ms.find(k)) en C++.
+(define (ms-erase t k) : tree -> int -> tree
+  (let ((c (ms-count t k)))
+    (if (== c 0)
+        t
+        (let ((t (with t size (sub-nat (get t size) 1))))
+          (if (> c 1)
+              (dec-count t (get t root) k)
+              (delete-node t k))))))
+
+; Borra TODAS las ocurrencias de k, como ms.erase(k) en C++.
+(define (ms-erase-all t k) : tree -> int -> tree
+  (let ((c (ms-count t k)))
+    (if (== c 0)
+        t
+        (delete-node (with t size (sub-nat (get t size) c)) k))))
+
+; ---------- prueba ----------------------------------------------------
+
+(define (insert-all m ks) : tree -> list int -> tree
+  (if (== (len ks) 0) m (insert-all (ms-insert m (head ks)) (tail ks))))
+
+(define (erase-all m ks) : tree -> list int -> tree
+  (if (== (len ks) 0) m (erase-all (ms-erase m (head ks)) (tail ks))))
+
+(define (lb-key t k) : tree -> int -> int
+  (let ((f (ms-lower-bound t k)))
+    (if (get f ok) (get f key) -1)))
+
+; Resultado: [size, count 5, count 3, count 8, lb 6, lb 11, lb -5] ++ elementos ordenados
+(let ((m (insert-all ms-new (list 5 3 8 3 9 1 5 5 7 2 6 4 10 3 12 11 20 15 13 14)))
+      (m (ms-erase m 5))            ; queda 5 dos veces
+      (m (ms-erase-all m 3))        ; desaparecen los tres 3
+      (m (ms-erase m 42))           ; ausente: no hace nada
+      (m (erase-all m (list 1 2 20 15 9)))
+      (m (insert-all m (list 9 9 1))))
+  (++ (list (ms-size m) (ms-count m 5) (ms-count m 3) (ms-count m 8)
+            (lb-key m 6) (lb-key m 11) (lb-key m -5) (lb-key m 100))
+      (ms-to-list m)))

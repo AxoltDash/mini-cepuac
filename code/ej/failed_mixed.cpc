@@ -1,0 +1,2 @@
+; Error de tipos: no se mezclan int y double sin conversion explicita.
+(+ 1 2.5)

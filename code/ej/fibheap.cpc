@@ -1,0 +1,274 @@
+; =====================================================================
+;  Fibonacci heap (min-heap) escrito en Mini-Cepuac.
+;
+;  Es la estructura clasica de Fredman y Tarjan: una lista circular de
+;  raices, cada nodo con su lista circular de hijos, grado, padre y marca.
+;  insert y decrease-key son O(1) amortizado y extract-min O(log n)
+;  amortizado gracias a la consolidacion por grados.
+;
+;  Como Mini-Cepuac no tiene punteros, los nodos viven en una arena de
+;  listas paralelas de longitud fija (64) y los "punteros" son indices de
+;  tipo `idx`. El nodo 0 hace de puntero nulo. Los indices se reparten en
+;  orden (1, 2, 3, ...), asi que el i-esimo nodo insertado tiene indice i;
+;  ese indice es el "handle" que se usa para decrease-key y delete, como
+;  en Dijkstra.
+;
+;  Lo que aporta el sistema de tipos refinados:
+;    * todo indice almacenado (padre, hijo, vecinos) es un `idx` valido,
+;      asi que nth/set nunca fallan;
+;    * los grados son naturales y el acceso a la tabla de consolidacion
+;      exige probar `deg < 16` con un `if`;
+;    * el contador n nunca es negativo (resta saturada).
+;
+;  Convencion: las funciones que "devuelven" un nodo lo dejan en `ret`.
+; =====================================================================
+
+; ---------- tipos ----------------------------------------------------
+
+(type idx   { v : int | v >= 0 && v < 64 })
+(type nat   { v : int | v >= 0 })
+(type ints  { v : list int | len v == 64 })
+(type nats  { v : list nat | len v == 64 })
+(type idxs  { v : list idx | len v == 64 })
+(type flags { v : list boolean | len v == 64 })
+(type table { v : list idx | len v == 16 })   ; tabla por grados (grado < 16)
+
+(type heap (record (key ints) (deg nats) (parent idxs) (child idxs)
+                   (left idxs) (right idxs) (mark flags)
+                   (min idx) (n nat) (next { v : int | v >= 1 && v <= 64 })
+                   (tab table) (ret idx)))
+
+; ---------- acceso a los campos de un nodo ---------------------------
+
+(define (key-of h i)    : heap -> idx -> int     (nth (get h key) i))
+(define (deg-of h i)    : heap -> idx -> nat     (nth (get h deg) i))
+(define (parent-of h i) : heap -> idx -> idx     (nth (get h parent) i))
+(define (child-of h i)  : heap -> idx -> idx     (nth (get h child) i))
+(define (left-of h i)   : heap -> idx -> idx     (nth (get h left) i))
+(define (right-of h i)  : heap -> idx -> idx     (nth (get h right) i))
+(define (marked? h i)   : heap -> idx -> boolean (nth (get h mark) i))
+
+(define (set-key h i k)    : heap -> idx -> int -> heap     (with h key    (set (get h key) i k)))
+(define (set-deg h i d)    : heap -> idx -> nat -> heap     (with h deg    (set (get h deg) i d)))
+(define (set-parent h i p) : heap -> idx -> idx -> heap     (with h parent (set (get h parent) i p)))
+(define (set-child h i c)  : heap -> idx -> idx -> heap     (with h child  (set (get h child) i c)))
+(define (set-left h i j)   : heap -> idx -> idx -> heap     (with h left   (set (get h left) i j)))
+(define (set-right h i j)  : heap -> idx -> idx -> heap     (with h right  (set (get h right) i j)))
+(define (set-mark h i b)   : heap -> idx -> boolean -> heap (with h mark   (set (get h mark) i b)))
+
+(define (sub-nat a b) : nat -> nat -> nat
+  (let ((d (- a b))) (if (< d 0) 0 d)))
+
+; ---------- listas circulares ----------------------------------------
+
+; Inserta x inmediatamente a la derecha de y en su lista circular.
+(define (splice-after h y x) : heap -> idx -> idx -> heap
+  (let ((z (right-of h y))
+        (h (set-right h y x))
+        (h (set-left h x y))
+        (h (set-right h x z)))
+    (set-left h z x)))
+
+; Saca x de su lista circular y lo deja apuntandose a si mismo.
+(define (unlink h x) : heap -> idx -> heap
+  (let ((l (left-of h x))
+        (r (right-of h x))
+        (h (set-right h l r))
+        (h (set-left h r l))
+        (h (set-left h x x)))
+    (set-right h x x)))
+
+; ---------- construccion e insercion ---------------------------------
+
+(define fh-new : heap
+  (record (key (replicate 64 0)) (deg (replicate 64 0))
+          (parent (replicate 64 0)) (child (replicate 64 0))
+          (left (replicate 64 0)) (right (replicate 64 0)) (mark (replicate 64 #f))
+          (min 0) (n 0) (next 1) (tab (replicate 16 0)) (ret 0)))
+
+(define (fh-empty? h) : heap -> boolean (== (get h min) 0))
+
+(define (fh-size h) : heap -> nat (get h n))
+
+; Llave minima (solo tiene sentido si el heap no esta vacio).
+(define (fh-min h) : heap -> int (key-of h (get h min)))
+
+; Inserta la llave k como nueva raiz; ret = indice del nodo (0 si la arena
+; esta llena).
+(define (fh-insert h k) : heap -> int -> heap
+  (let ((x (get h next)))
+    (if (< x 64)
+        (let ((h (set-key h x k))
+              (h (set-deg h x 0))
+              (h (set-parent h x 0))
+              (h (set-child h x 0))
+              (h (set-mark h x #f))
+              (h (set-left h x x))
+              (h (set-right h x x))
+              (h (with h next (+ x 1)))
+              (h (with h n (+ (get h n) 1)))
+              (m (get h min))
+              (h (if (== m 0)
+                     (with h min x)
+                     (let ((h (splice-after h m x)))
+                       (if (< k (key-of h m)) (with h min x) h)))))
+          (with h ret x))
+        (with h ret 0))))
+
+; ---------- extract-min y consolidacion -------------------------------
+
+; Mueve k hijos de z (empezando en c) a la lista de raices.
+(define (promote-children h z c k) : heap -> idx -> idx -> nat -> heap
+  (if (== k 0)
+      h
+      (let ((nx (right-of h c))
+            (h (unlink h c))
+            (h (set-parent h c 0))
+            (h (splice-after h z c)))
+        (promote-children h z nx (- k 1)))))
+
+; Lista de las raices: recorre la lista circular desde start (incluido)
+; hasta volver a el.
+(define (collect-roots h start cur acc) : heap -> idx -> idx -> list idx -> list idx
+  (let ((acc (cons cur acc))
+        (nx (right-of h cur)))
+    (if (== nx start) acc (collect-roots h start nx acc))))
+
+; Hace a y hijo de x (ambos raices, key y >= key x).
+(define (link h y x) : heap -> idx -> idx -> heap
+  (let ((h (unlink h y))
+        (c (child-of h x))
+        (h (if (== c 0) (set-child h x y) (splice-after h c y)))
+        (h (set-parent h y x))
+        (h (set-deg h x (+ (deg-of h x) 1))))
+    (set-mark h y #f)))
+
+; Coloca la raiz x en la tabla por grados, enlazando mientras haya otra
+; raiz del mismo grado. El `if (< d 16)` es la prueba de rango que exige
+; nth; con menos de 64 nodos el grado nunca pasa de 8.
+(define (place h x d) : heap -> idx -> nat -> heap
+  (if (< d 16)
+      (let ((y (nth (get h tab) d)))
+        (if (== y 0)
+            (with h tab (set (get h tab) d x))
+            (let ((small (if (< (key-of h y) (key-of h x)) y x))
+                  (big   (if (< (key-of h y) (key-of h x)) x y))
+                  (h (link h big small))
+                  (h (with h tab (set (get h tab) d 0))))
+              (place h small (+ d 1)))))
+      h))
+
+(define (place-all h rs) : heap -> list idx -> heap
+  (if (== (len rs) 0)
+      h
+      (let ((x (head rs)))
+        (place-all (place h x (deg-of h x)) (tail rs)))))
+
+; Reconstruye la lista de raices y el minimo a partir de la tabla.
+(define (rebuild h i) : heap -> nat -> heap
+  (if (< i 16)
+      (let ((x (nth (get h tab) i)))
+        (if (== x 0)
+            (rebuild h (+ i 1))
+            (let ((h (set-left h x x))
+                  (h (set-right h x x))
+                  (m (get h min))
+                  (h (if (== m 0)
+                         (with h min x)
+                         (let ((h (splice-after h m x)))
+                           (if (< (key-of h x) (key-of h m)) (with h min x) h)))))
+              (rebuild h (+ i 1)))))
+      (with h tab (replicate 16 0))))
+
+(define (consolidate h) : heap -> heap
+  (let ((m (get h min))
+        (rs (collect-roots h m m (list)))
+        (h (place-all h rs))
+        (h (with h min 0)))
+    (rebuild h 0)))
+
+; Extrae el minimo; ret = su indice (0 si el heap estaba vacio). La llave
+; extraida se lee con (key-of h (get h ret)).
+(define (fh-extract-min h) : heap -> heap
+  (let ((z (get h min)))
+    (if (== z 0)
+        (with h ret 0)
+        (let ((h (promote-children h z (child-of h z) (deg-of h z)))
+              (h (set-child h z 0))
+              (h (set-deg h z 0))
+              (r (right-of h z))
+              (h (unlink h z))
+              (h (with h n (sub-nat (get h n) 1))))
+          (if (== r z)
+              (with (with h min 0) ret z)
+              (let ((h (with h min r))
+                    (h (consolidate h)))
+                (with h ret z)))))))
+
+; ---------- decrease-key y delete -------------------------------------
+
+; Corta x de su padre y y lo sube a la lista de raices.
+(define (cut h x y) : heap -> idx -> idx -> heap
+  (let ((h (if (== (child-of h y) x)
+               (set-child h y (if (== (right-of h x) x) 0 (right-of h x)))
+               h))
+        (h (unlink h x))
+        (h (set-deg h y (sub-nat (deg-of h y) 1)))
+        (h (splice-after h (get h min) x))
+        (h (set-parent h x 0)))
+    (set-mark h x #f)))
+
+(define (cascading-cut h y) : heap -> idx -> heap
+  (let ((z (parent-of h y)))
+    (if (== z 0)
+        h
+        (if (not (marked? h y))
+            (set-mark h y #t)
+            (cascading-cut (cut h y z) z)))))
+
+; Baja la llave del nodo x a k (si k es mayor que la actual no hace nada).
+(define (fh-decrease-key h x k) : heap -> idx -> int -> heap
+  (if (|| (== x 0) (> k (key-of h x)))
+      h
+      (let ((h (set-key h x k))
+            (y (parent-of h x))
+            (h (if (&& (!= y 0) (< k (key-of h y)))
+                   (cascading-cut (cut h x y) y)
+                   h)))
+        (if (< k (key-of h (get h min))) (with h min x) h))))
+
+; Elimina el nodo x: lo vuelve el minimo y lo extrae.
+(define (fh-delete h x) : heap -> idx -> heap
+  (fh-extract-min (fh-decrease-key h x -1000000000)))
+
+; ---------- prueba ----------------------------------------------------
+
+(define (insert-all h ks) : heap -> list int -> heap
+  (if (== (len ks) 0) h (insert-all (fh-insert h (head ks)) (tail ks))))
+
+; Extrae el minimo y regresa el heap con la llave extraida en `key` del nodo ret.
+(define (pop-key h) : heap -> int
+  (let ((h (fh-extract-min h))) (key-of h (get h ret))))
+
+; Vacia el heap acumulando las llaves extraidas (salen ordenadas).
+(define (drain h acc) : heap -> list int -> list int
+  (if (fh-empty? h)
+      acc
+      (let ((h (fh-extract-min h)))
+        (drain h (++ acc (list (key-of h (get h ret))))))))
+
+; Los nodos se numeran 1, 2, 3, ... en orden de insercion:
+;   1:20 2:5 3:30 4:8 5:15 6:2 7:40 8:25 9:12 10:50 11:3 12:18
+(let ((h (insert-all fh-new (list 20 5 30 8 15 2 40 25 12 50 3 18)))
+      (a (fh-min h))                        ; 2
+      (h (fh-extract-min h))                ; saca 2 (consolida)
+      (b (fh-min h))                        ; 3
+      (h (fh-extract-min h))                ; saca 3
+      (h (fh-decrease-key h 3 1))           ; nodo 3 (30) -> 1
+      (c (fh-min h))                        ; 1
+      (h (fh-delete h 7))                   ; borra nodo 7 (40)
+      (h (fh-decrease-key h 10 9))          ; nodo 10 (50) -> 9
+      (h (insert-all h (list 7 100 4)))     ; nodos 13 14 15
+      (h (fh-decrease-key h 14 6))          ; nodo 14 (100) -> 6
+      (s (fh-size h)))
+  (++ (list a b c s) (drain h (list))))

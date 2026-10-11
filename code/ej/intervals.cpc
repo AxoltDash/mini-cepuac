@@ -1,0 +1,6 @@
+; Aritmetica de intervalos: si y esta en [1, 10], (* y 2) esta en [2, 20].
+; El verificador demuestra que el cuerpo satisface el codominio.
+(let (doble : { v : int | v >= 1 && v <= 10 } -> { v : int | v >= 2 && v <= 20 }
+      (lambda : { v : int | v >= 1 && v <= 10 } -> { v : int | v >= 2 && v <= 20 } (y)
+        (* y 2)))
+  (doble 7))

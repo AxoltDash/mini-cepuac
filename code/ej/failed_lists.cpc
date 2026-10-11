@@ -1,0 +1,3 @@
+; Error de tipos: `list int` admite la lista vacia, asi que (head xs) no es
+; seguro sin una prueba de que len xs > 0.
+(define (first xs) : list int -> int (head xs))

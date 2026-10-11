@@ -1,0 +1,4 @@
+; Error de tipos: en la rama "else" solo se sabe que y <= 0,
+; lo que todavia admite el 0.
+(lambda : int -> int (y)
+  (if (> y 0) (/ 10 y) (/ 10 (- y 0))))

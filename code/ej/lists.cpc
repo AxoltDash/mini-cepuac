@@ -1,0 +1,25 @@
+; Listas con refinamientos de longitud. `head` exige probar que la lista no
+; es vacia; con un `if` sobre (len xs) el verificador refina la lista en la
+; rama segura. `nth` exige que el indice este en rango.
+
+; Promedio entero de una lista no vacia: el tipo garantiza que no se
+; divide entre cero.
+(define (sum xs) : list int -> int
+  (if (== (len xs) 0) 0 (+ (head xs) (sum (tail xs)))))
+
+(define (average xs) : { v : list int | len v > 0 } -> int
+  (/ (sum xs) (len xs)))
+
+; Primer elemento con valor por omision si la lista es vacia.
+(define (first-or xs d) : list int -> int -> int
+  (if (> (len xs) 0) (head xs) d))
+
+; Acceso seguro: el indice se verifica contra la longitud declarada.
+(type vec4 { v : list int | len v == 4 })
+(type i4   { v : int | v >= 0 && v < 4 })
+
+(define (at xs i) : vec4 -> i4 -> int (nth xs i))
+
+(list (average (list 10 20 30 41))
+      (first-or (list) 7)
+      (at (list 5 6 7 8) 3))

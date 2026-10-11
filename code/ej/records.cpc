@@ -1,0 +1,22 @@
+; Registros con campos refinados. Una cuenta bancaria cuyo saldo nunca es
+; negativo: el tipo `account` lo exige y el verificador obliga a comprobar
+; el saldo antes de retirar.
+
+(type nat { v : int | v >= 0 })
+(type account (record (owner string) (balance nat)))
+
+(define (deposit a n) : account -> nat -> account
+  (with a balance (+ (get a balance) n)))
+
+; Sin el `if`, (- balance n) seria un int cualquiera y el programa no
+; tiparia: la rama then sabe que balance >= n no basta (el dominio no es
+; relacional), por eso se liga la diferencia y se comprueba ella.
+(define (withdraw a n) : account -> nat -> account
+  (let ((d (- (get a balance) n)))
+    (if (>= d 0) (with a balance d) a)))
+
+(let ((a (record (owner "ana") (balance 100)))
+      (a (deposit a 50))
+      (a (withdraw a 30))
+      (a (withdraw a 500)))   ; rechazado: el saldo no cambia
+  (get a balance))

@@ -1,0 +1,5 @@
+; Con if, una cadena arbitraria se vuelve segura dentro de la rama.
+(let (saluda : string -> string
+      (lambda : string -> string (nombre)
+        (if (== nombre "") "Hola, desconocido" (++ "Hola, " nombre))))
+  (saluda "Cepuac"))

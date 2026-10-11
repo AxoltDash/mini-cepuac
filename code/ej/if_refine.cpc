@@ -1,0 +1,11 @@
+; Tipado sensible al flujo: dentro de la rama "then" el verificador sabe
+; que y != 0, por lo que la division es segura aunque y : int.
+(let (safeDiv : int -> (int -> int)
+      (lambda : int -> (int -> int) (x)
+        (lambda : int -> int (y)
+          (if (!= y 0) (/ x y) 0)
+        )
+      )
+    )
+  ((safeDiv 10) 0)
+)

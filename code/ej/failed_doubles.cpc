@@ -1,0 +1,3 @@
+; Error de tipos: toInt de un double en [0.5, inf) puede dar 0.
+(lambda : { v : double | v >= 0.5 } -> int (d)
+  (/ 100 (toInt d)))

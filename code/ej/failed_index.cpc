@@ -1,0 +1,4 @@
+; Error de tipos: el indice puede valer 4 y la lista tiene exactamente 4
+; elementos (posiciones 0..3).
+(define (at xs i) : { v : list int | len v == 4 } -> { v : int | v >= 0 && v <= 4 } -> int
+  (nth xs i))

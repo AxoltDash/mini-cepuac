@@ -1,0 +1,4 @@
+; Error de tipos: (* y y) con y en [-10, 10] cae en [-100, 100],
+; que no es subtipo del codominio [0, 100] declarado.
+(lambda : { v : int | v >= -10 && v <= 10 } -> { v : int | v >= 0 && v <= 100 } (y)
+  (* y y))

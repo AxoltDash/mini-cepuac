@@ -1,1 +1,2 @@
-(let (x:number 0) (+ 3 (/ 3 x)))
+; Error de tipos: el verificador infiere x == 0 y rechaza la division.
+(let (x : int 0) (+ 3 (/ 3 x)))

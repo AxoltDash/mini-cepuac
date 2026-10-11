@@ -1,0 +1,6 @@
+; int y double son tipos distintos; la conversion es explicita.
+; El refinamiento garantiza que el truncamiento no produce 0.
+(let (inverso : { v : double | v >= 1.0 } -> double
+      (lambda : { v : double | v >= 1.0 } -> double (d)
+        (/ 1.0 (toDouble (toInt d)))))
+  (inverso 2.5))

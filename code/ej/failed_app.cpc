@@ -1,1 +1,2 @@
-((lambda : number -> number (x) (+ x 1)) #t)
+; Error de tipos: se pasa un boolean donde se espera un int.
+((lambda : int -> int (x) (+ x 1)) #t)

@@ -1,0 +1,7 @@
+; El fallo del Ariane 5: convertir un double a un entero de 16 bits sin
+; verificar el rango. Aqui el tipo exige que la conversion solo se aplique
+; a valores que caben en 16 bits con signo.
+(let (aInt16 : { v : double | v >= -32768.0 && v <= 32767.0 } -> { v : int | v >= -32768 && v <= 32767 }
+      (lambda : { v : double | v >= -32768.0 && v <= 32767.0 } -> { v : int | v >= -32768 && v <= 32767 } (h)
+        (toInt h)))
+  (aInt16 1234.5))
